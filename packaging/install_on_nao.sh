@@ -2,10 +2,18 @@
 # Copy the audio bridge onto a NAO and register it with NAOqi autoload.
 # Usage: ./install_on_nao.sh nao@ROBOT_IP
 #
+# The protocol package is copied from a local checkout when one is already
+# next to this repository (../nao-websocket-bridge-protocol). Otherwise the
+# script clones https://github.com/icampus-wildau/nao-websocket-bridge-protocol
+# and copies the package from that clone. Set PROTOCOL_SRC to a checkout
+# root to use a different local copy.
+#
 # The password is requested once. Later ssh and scp calls reuse that login
 # through an SSH control socket, which is closed when this script exits.
 
 set -eu
+
+PROTOCOL_REPO=https://github.com/icampus-wildau/nao-websocket-bridge-protocol.git
 
 if [ $# -ne 1 ]; then
   echo "usage: install_on_nao.sh nao@ROBOT_IP" >&2
@@ -14,12 +22,46 @@ fi
 
 ROBOT=$1
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-PROTOCOL=$(CDPATH= cd -- "$ROOT/../nao_bridge_protocol/nao_bridge_protocol" && pwd)
 REMOTE_DIR=/home/nao/nao-audio-bridge
 PKG_DIR=/home/nao/.local/share/PackageManager/apps/nao-audio-bridge
 
 CONTROL_DIR=$(mktemp -d)
 CONTROL_PATH=$CONTROL_DIR/ssh.sock
+
+# Print the nao_websocket_bridge_protocol directory to copy onto the robot.
+resolve_protocol() {
+  src=${PROTOCOL_SRC:-}
+  if [ -n "$src" ]; then
+    if [ -f "$src/nao_websocket_bridge_protocol/__init__.py" ]; then
+      echo "Using protocol checkout from PROTOCOL_SRC: $src" >&2
+      CDPATH= cd -- "$src/nao_websocket_bridge_protocol" && pwd
+      return
+    fi
+    echo "PROTOCOL_SRC is not a nao-websocket-bridge-protocol checkout: $src" >&2
+    return 1
+  fi
+
+  sibling=$ROOT/../nao-websocket-bridge-protocol
+  if [ -f "$sibling/nao_websocket_bridge_protocol/__init__.py" ]; then
+    echo "Using local protocol checkout: $sibling" >&2
+    CDPATH= cd -- "$sibling/nao_websocket_bridge_protocol" && pwd
+    return
+  fi
+
+  if ! command -v git >/dev/null 2>&1; then
+    echo "git is required to clone $PROTOCOL_REPO" >&2
+    return 1
+  fi
+
+  clone=$CONTROL_DIR/nao-websocket-bridge-protocol
+  echo "No local protocol checkout. Cloning $PROTOCOL_REPO" >&2
+  git clone --depth 1 "$PROTOCOL_REPO" "$clone"
+  if [ ! -f "$clone/nao_websocket_bridge_protocol/__init__.py" ]; then
+    echo "Cloned $PROTOCOL_REPO has no nao_websocket_bridge_protocol package" >&2
+    return 1
+  fi
+  CDPATH= cd -- "$clone/nao_websocket_bridge_protocol" && pwd
+}
 
 ssh_nao() {
   ssh -o ControlMaster=auto -o ControlPath="$CONTROL_PATH" -o ControlPersist=120 "$@"
@@ -36,6 +78,8 @@ cleanup() {
 trap cleanup EXIT
 trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
+
+PROTOCOL=$(resolve_protocol)
 
 echo "Installing audio bridge on $ROBOT"
 echo "Enter the SSH password once. The rest of the install reuses that login."

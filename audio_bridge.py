@@ -43,15 +43,15 @@ from SimpleWebSocketServer import SimpleWebSocketServer, WebSocket
 def _load_protocol():
     """Import the shared contract from the install dir or the sibling checkout."""
     try:
-        import nao_bridge_protocol
-        return nao_bridge_protocol
+        import nao_websocket_bridge_protocol
+        return nao_websocket_bridge_protocol
     except ImportError:
         here = os.path.dirname(os.path.abspath(__file__))
-        candidate = os.path.join(os.path.dirname(here), "nao_bridge_protocol")
+        candidate = os.path.join(os.path.dirname(here), "nao-websocket-bridge-protocol")
         if candidate not in sys.path:
             sys.path.insert(0, candidate)
-        import nao_bridge_protocol
-        return nao_bridge_protocol
+        import nao_websocket_bridge_protocol
+        return nao_websocket_bridge_protocol
 
 
 _protocol = _load_protocol()
@@ -509,7 +509,7 @@ class BridgeSource(object):
 
     ``start`` subscribes a NAOqi device and ``stop`` releases it. The device
     callback only enqueues bytes. Text envelopes for the stream come from
-    ``nao_bridge_protocol``. The front microphone is the first source.
+    ``nao_websocket_bridge_protocol``. The front microphone is the first source.
     """
 
     def start(self):
