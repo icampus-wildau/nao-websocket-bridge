@@ -8,16 +8,43 @@ The process reconnects to NAOqi on its own. `run_forever.sh` only restarts it if
 
 ## Install
 
-The copy commands, the file list, and autostart are in the repository [README](../README.md#copy-the-audio-bridge-to-the-nao). From this directory the same copy is:
+### Proposed: one command from the laptop
+
+No clone. The script downloads the `main` branch, asks for the NAO IP and the `nao` password, then copies the bridge over SSH.
 
 ```bash
-chmod +x packaging/install_on_nao.sh packaging/run_forever.sh
-./packaging/install_on_nao.sh nao@ROBOT_IP
+curl -LsSf https://raw.githubusercontent.com/icampus-wildau/nao-websocket-bridge/main/packaging/install.sh | sh
 ```
 
-The script copies `audio_bridge.py`, `SimpleWebSocketServer/`, and the `nao_websocket_bridge_protocol` package into `/home/nao/nao-audio-bridge/`. It uses a checkout at `../nao-websocket-bridge-protocol` when that package is already there. Otherwise it clones [nao-websocket-bridge-protocol](https://github.com/icampus-wildau/nao-websocket-bridge-protocol) and copies the package from the clone. Set `PROTOCOL_SRC` to a checkout root to choose another local copy. On the robot the package sits beside `audio_bridge.py` so Python 2.7 can import it.
+Skip a question by setting it first. A password in the command line is visible to other users on the laptop; the prompt keeps it off the command line.
 
-The install script registers `/home/nao/nao-audio-bridge/run_forever.sh` under `[program]` in `/home/nao/naoqi/preferences/autoload.ini` and starts the bridge immediately. `ALServiceManager.startService` does not see this process. A copied package manifest is not an installed service.
+```bash
+curl -LsSf https://raw.githubusercontent.com/icampus-wildau/nao-websocket-bridge/main/packaging/install.sh | NAO_IP=192.168.2.57 sh
+```
+
+`--ip`, `--user`, and `--password` do the same thing when the script is saved and run with `sh -s --`.
+
+### On the NAO
+
+Use this when you are already logged in as `nao`. There is no IP and no password. The script writes into the current home directory and uses `python` and `wget` or `curl`, whichever is installed.
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/icampus-wildau/nao-websocket-bridge/main/packaging/install_local.sh | sh
+```
+
+From a checkout already on the robot, `sh packaging/install_local.sh` installs those files instead of downloading `main`.
+
+### From a laptop checkout
+
+Use this to copy the files you have locally, including changes that are not on `main` yet:
+
+```bash
+sh packaging/install_on_nao.sh nao@ROBOT_IP
+```
+
+Every method copies `audio_bridge.py`, `SimpleWebSocketServer/`, and the `nao_websocket_bridge_protocol` package into `/home/nao/nao-audio-bridge/`. The one-command laptop install always takes both from the `main` branch on GitHub. A checkout install uses `../nao-websocket-bridge-protocol` when that directory exists, and otherwise the same GitHub branch. Set `PROTOCOL_SRC` to a checkout root to choose another local copy. On the robot the package sits beside `audio_bridge.py` so Python 2.7 can import it.
+
+The install registers `/home/nao/nao-audio-bridge/run_forever.sh` under `[program]` in `/home/nao/naoqi/preferences/autoload.ini` and starts the bridge immediately. `ALServiceManager.startService` does not see this process. A copied package manifest is not an installed service.
 
 ```bash
 ssh nao@ROBOT_IP /home/nao/nao-audio-bridge/run_forever.sh stop
@@ -48,3 +75,7 @@ Use this only when `~/naoqi/preferences` is not writable. It starts the bridge a
 ```cron
 @reboot /home/nao/nao-audio-bridge/run_forever.sh
 ```
+
+## Local development
+
+This directory is not a pip package. The laptop installs `nao-websocket-bridge-client` and `nao-websocket-bridge-protocol`. The robot runs the files placed by the install above.

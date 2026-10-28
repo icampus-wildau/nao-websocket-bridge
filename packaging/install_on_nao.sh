@@ -82,7 +82,9 @@ trap 'cleanup; exit 143' TERM
 PROTOCOL=$(resolve_protocol)
 
 echo "Installing audio bridge on $ROBOT"
-echo "Enter the SSH password once. The rest of the install reuses that login."
+if [ -z "${SSH_ASKPASS:-}" ]; then
+  echo "Enter the SSH password once. The rest of the install reuses that login."
+fi
 ssh_nao "$ROBOT" "mkdir -p '$REMOTE_DIR' /home/nao/naoqi/preferences"
 scp_nao "$ROOT/audio_bridge.py" "$ROBOT:$REMOTE_DIR/audio_bridge.py"
 scp_nao -r "$PROTOCOL" "$ROBOT:$REMOTE_DIR/"
