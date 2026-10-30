@@ -8,11 +8,16 @@ This is a separate process. Do not add it under `[python]` in `autoload.ini`. Th
 
 ## Install from a laptop
 
+On Linux use a terminal with `curl` (or download the script with `wget`),
+OpenSSH (`ssh` and `scp`), `gzip`, and `tar`. On Windows, run the same command
+in a WSL Linux terminal with those tools installed; the command is not a
+PowerShell command. A route to the robot's SSH port and TCP 8765 is required.
+
 ```bash
 curl -LsSf https://raw.githubusercontent.com/icampus-wildau/nao-websocket-bridge/main/packaging/install.sh | sh
 ```
 
-The script downloads the `main` branch, asks for the NAO IP and the `nao` password, copies the files, registers autoload, and starts the bridge.
+The script downloads the `main` branch, asks for the NAO IP and the `nao` password, copies the files, registers autoload, and starts the bridge. The first connection prints the robot's SSH host key and waits for `yes`. The address is the IP on its own, for example `192.168.2.57`.
 
 ## Install while logged in on the robot
 

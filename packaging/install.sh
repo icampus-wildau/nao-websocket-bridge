@@ -5,7 +5,8 @@
 #
 # Asks for the robot IP and the nao user's password when they are not already
 # set. A password typed at the prompt is handed to ssh through SSH_ASKPASS and
-# is not passed as an argument.
+# is not passed as an argument. The same helper answers a new host key on the
+# terminal; a password-only reply makes ssh wait forever at that question.
 #
 #   curl -LsSf .../install.sh | NAO_IP=192.168.2.57 sh
 #   sh packaging/install.sh --ip 192.168.2.57
@@ -27,7 +28,31 @@ usage: install.sh [--ip IP] [--user USER] [--password PASSWORD]
   NAO_USER      SSH user (default: nao)
 
 With no IP or password, both are read from the terminal.
+The address is the robot IP on its own, for example 192.168.2.57.
+A new SSH host key is shown on the terminal; answer yes to continue.
 EOF
+}
+
+# Drop CR and surrounding whitespace. Pasted addresses often carry both,
+# and OpenSSH rejects them as "hostname contains invalid characters".
+trim_field() {
+  field=$(printf '%s' "$1" | tr -d '\r')
+  field=${field#"${field%%[![:space:]]*}"}
+  field=${field%"${field##*[![:space:]]}"}
+  printf '%s' "$field"
+}
+
+# Letters, digits, dot, underscore, and hyphen. OpenSSH rejects spaces and
+# shell punctuation with "hostname contains invalid characters".
+ssh_name_ok() {
+  case "$1" in
+    ""|-*)
+      return 1
+      ;;
+    *[!A-Za-z0-9._-]*)
+      return 1
+      ;;
+  esac
 }
 
 IP=${NAO_IP:-}
@@ -89,8 +114,29 @@ if [ -z "$IP" ]; then
   printf 'NAO IP address: ' >/dev/tty
   IFS= read -r IP </dev/tty
 fi
+IP=$(trim_field "$IP")
+NAO_USER=$(trim_field "$NAO_USER")
+# A value typed as user@host, or copied from ssh's
+# "host 'name (address)'" line, is reduced to the address.
+case "$IP" in
+  *@*)
+    NAO_USER=$(trim_field "${IP%@*}")
+    IP=$(trim_field "${IP##*@}")
+    ;;
+esac
+case "$IP" in
+  *" ("*")")
+    IP=$(trim_field "${IP%% (*}")
+    ;;
+esac
 if [ -z "$IP" ]; then
   echo "NAO IP address is required." >&2
+  exit 1
+fi
+if ! ssh_name_ok "$NAO_USER" || ! ssh_name_ok "$IP"; then
+  echo "Cannot use '$NAO_USER@$IP' as an SSH address." >&2
+  echo "ssh rejects spaces and punctuation in the host name." >&2
+  echo "Enter the robot IP on its own, for example 192.168.2.57." >&2
   exit 1
 fi
 
@@ -152,9 +198,31 @@ if [ ! -f "$PROTOCOL_ROOT/nao_websocket_bridge_protocol/__init__.py" ]; then
 fi
 
 ASKPASS=$WORKDIR/askpass
+# SSH_ASKPASS_REQUIRE=force sends the host-key question here, not only the
+# password. Replying with the password makes ssh ask that question again
+# and the install never moves past "Installing".
 cat >"$ASKPASS" <<'EOF'
 #!/bin/sh
-printf '%s\n' "$NAO_PASSWORD"
+prompt=$1
+case "${SSH_ASKPASS_PROMPT:-}" in
+  none)
+    exit 0
+    ;;
+esac
+case "$prompt" in
+  *yes/no*|*[Ff]ingerprint*|*authenticity*)
+    if [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
+      echo "No terminal to confirm the SSH host key." >&2
+      exit 1
+    fi
+    printf '%s' "$prompt" >/dev/tty
+    IFS= read -r reply </dev/tty || exit 1
+    printf '%s\n' "$reply"
+    ;;
+  *)
+    printf '%s\n' "$NAO_PASSWORD"
+    ;;
+esac
 EOF
 chmod 700 "$ASKPASS"
 export NAO_PASSWORD

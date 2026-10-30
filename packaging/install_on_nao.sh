@@ -21,6 +21,49 @@ if [ $# -ne 1 ]; then
 fi
 
 ROBOT=$1
+
+trim_field() {
+  field=$(printf '%s' "$1" | tr -d '\r')
+  field=${field#"${field%%[![:space:]]*}"}
+  field=${field%"${field##*[![:space:]]}"}
+  printf '%s' "$field"
+}
+
+ssh_name_ok() {
+  case "$1" in
+    ""|-*)
+      return 1
+      ;;
+    *[!A-Za-z0-9._-]*)
+      return 1
+      ;;
+  esac
+}
+
+raw=$(trim_field "$ROBOT")
+case "$raw" in
+  *@*)
+    login=$(trim_field "${raw%@*}")
+    host=$(trim_field "${raw##*@}")
+    ;;
+  *)
+    login=nao
+    host=$raw
+    ;;
+esac
+case "$host" in
+  *" ("*")")
+    host=$(trim_field "${host%% (*}")
+    ;;
+esac
+if ! ssh_name_ok "$login" || ! ssh_name_ok "$host"; then
+  echo "Cannot connect to '$raw'." >&2
+  echo "ssh rejects that address (hostname contains invalid characters)." >&2
+  echo "Enter the robot IP on its own, for example 192.168.2.57." >&2
+  exit 1
+fi
+ROBOT=$login@$host
+
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 REMOTE_DIR=/home/nao/nao-audio-bridge
 PKG_DIR=/home/nao/.local/share/PackageManager/apps/nao-audio-bridge
