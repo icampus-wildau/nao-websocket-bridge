@@ -91,27 +91,74 @@ resolve_protocol() {
     return
   fi
 
-  if ! command -v git >/dev/null 2>&1; then
-    echo "git is required to clone $PROTOCOL_REPO" >&2
+  version=$(awk '
+    $0 ~ /^name = "nao-websocket-bridge-protocol"/ { found = 1 }
+    found && $0 ~ /^version = / {
+      gsub(/"/, "", $3)
+      print $3
+      exit
+    }
+  ' "$ROOT/uv.lock")
+  if [ -z "$version" ]; then
+    echo "The bridge release does not name a protocol version." >&2
     return 1
   fi
+  echo "Downloading nao-websocket-bridge-protocol $version from PyPI" >&2
+  py=python3
+  command -v python3 >/dev/null 2>&1 || py=python
+  "$py" - "$version" "$CONTROL_DIR" <<'PY'
+import json, sys, tarfile, os
+try:
+    from urllib.request import urlopen
+except ImportError:
+    from urllib2 import urlopen
+version, dest = sys.argv[1], sys.argv[2]
+url = "https://pypi.org/pypi/nao-websocket-bridge-protocol/%s/json" % version
+try:
+    payload = json.load(urlopen(url))
+except Exception as exc:
+    sys.stderr.write("Protokollpaket %s ist auf PyPI nicht verfuegbar (%s).\n" % (version, exc))
+    sys.exit(1)
+sdists = [item["url"] for item in payload["urls"] if item["packagetype"] == "sdist"]
+if not sdists:
+    sys.stderr.write("Protokollpaket %s hat kein Quellarchiv.\n" % version)
+    sys.exit(1)
+archive_path = os.path.join(dest, "protocol.tar.gz")
+handle = open(archive_path, "wb")
+try:
+    handle.write(urlopen(sdists[0]).read())
+finally:
+    handle.close()
+archive = tarfile.open(archive_path)
+try:
+    archive.extractall(dest)
+finally:
+    archive.close()
+for root, dirs, files in os.walk(dest):
+    package = os.path.join(root, "nao_websocket_bridge_protocol", "__init__.py")
+    if os.path.isfile(package):
+        print(os.path.join(root, "nao_websocket_bridge_protocol"))
+        sys.exit(0)
+sys.stderr.write("The protocol archive has no package.\n")
+sys.exit(1)
+PY
+}
 
-  clone=$CONTROL_DIR/nao-websocket-bridge-protocol
-  echo "No local protocol checkout. Cloning $PROTOCOL_REPO" >&2
-  git clone --depth 1 "$PROTOCOL_REPO" "$clone"
-  if [ ! -f "$clone/nao_websocket_bridge_protocol/__init__.py" ]; then
-    echo "Cloned $PROTOCOL_REPO has no nao_websocket_bridge_protocol package" >&2
-    return 1
+ssh_base() {
+  if [ -n "${NAO_KNOWN_HOSTS:-}" ]; then
+    printf '%s\n' -o "UserKnownHostsFile=$NAO_KNOWN_HOSTS" -o StrictHostKeyChecking=yes
   fi
-  CDPATH= cd -- "$clone/nao_websocket_bridge_protocol" && pwd
+  printf '%s\n' -o ControlMaster=auto -o "ControlPath=$CONTROL_PATH" -o ControlPersist=120
 }
 
 ssh_nao() {
-  ssh -o ControlMaster=auto -o ControlPath="$CONTROL_PATH" -o ControlPersist=120 "$@"
+  # shellcheck disable=SC2046
+  ssh $(ssh_base) "$@"
 }
 
 scp_nao() {
-  scp -O -o ControlMaster=auto -o ControlPath="$CONTROL_PATH" -o ControlPersist=120 "$@"
+  # shellcheck disable=SC2046
+  scp -O $(ssh_base) "$@"
 }
 
 cleanup() {
@@ -124,22 +171,26 @@ trap 'cleanup; exit 143' TERM
 
 PROTOCOL=$(resolve_protocol)
 
+STAGE=$REMOTE_DIR.stage
 echo "Installing audio bridge on $ROBOT"
 if [ -z "${SSH_ASKPASS:-}" ]; then
   echo "Enter the SSH password once. The rest of the install reuses that login."
 fi
-ssh_nao "$ROBOT" "mkdir -p '$REMOTE_DIR' /home/nao/naoqi/preferences"
-scp_nao "$ROOT/audio_bridge.py" "$ROBOT:$REMOTE_DIR/audio_bridge.py"
-scp_nao -r "$PROTOCOL" "$ROBOT:$REMOTE_DIR/"
-scp_nao -r "$ROOT/SimpleWebSocketServer" "$ROBOT:$REMOTE_DIR/"
-scp_nao "$ROOT/packaging/run_forever.sh" "$ROBOT:$REMOTE_DIR/run_forever.sh"
-scp_nao "$ROOT/packaging/register_autoload.py" "$ROBOT:$REMOTE_DIR/register_autoload.py"
-ssh_nao "$ROBOT" "chmod 755 '$REMOTE_DIR/run_forever.sh' '$REMOTE_DIR/audio_bridge.py'"
+ssh_nao "$ROBOT" "rm -rf '$STAGE' && mkdir -p '$STAGE' /home/nao/naoqi/preferences"
+scp_nao "$ROOT/audio_bridge.py" "$ROBOT:$STAGE/audio_bridge.py"
+scp_nao -r "$PROTOCOL" "$ROBOT:$STAGE/"
+scp_nao -r "$ROOT/SimpleWebSocketServer" "$ROBOT:$STAGE/"
+scp_nao "$ROOT/packaging/run_forever.sh" "$ROBOT:$STAGE/run_forever.sh"
+scp_nao "$ROOT/packaging/register_autoload.py" "$ROBOT:$STAGE/register_autoload.py"
+scp_nao "$ROOT/packaging/replace_tree.sh" "$ROBOT:$STAGE/replace_tree.sh"
+if [ -n "${NAO_PROGRAM_VERSION:-}" ]; then
+  printf '%s\n' "$NAO_PROGRAM_VERSION" > "$CONTROL_DIR/VERSION"
+  scp_nao "$CONTROL_DIR/VERSION" "$ROBOT:$STAGE/VERSION"
+fi
+ssh_nao "$ROBOT" "chmod 755 '$STAGE/run_forever.sh' '$STAGE/audio_bridge.py' '$STAGE/replace_tree.sh'"
 # A copied manifest is not an installed package, so remove the earlier attempt.
 ssh_nao "$ROBOT" "rm -rf '$PKG_DIR'"
-ssh_nao "$ROBOT" "python '$REMOTE_DIR/register_autoload.py'"
-ssh_nao "$ROBOT" "'$REMOTE_DIR/run_forever.sh' stop"
-ssh_nao "$ROBOT" "'$REMOTE_DIR/run_forever.sh'"
+ssh_nao "$ROBOT" "NAO_CANON='$REMOTE_DIR' NAO_STAGE='$STAGE' NAO_MARKER='audio_bridge.py' NAO_HOME_TOKEN='nao-audio-bridge' NAO_KEEP='bridge.env' NAO_REGISTER=1 '$STAGE/replace_tree.sh'"
 
 cat <<EOF
 Installed on $ROBOT.

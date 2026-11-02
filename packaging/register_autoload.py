@@ -14,6 +14,7 @@ import sys
 
 LAUNCH = "/home/nao/nao-audio-bridge/run_forever.sh"
 AUTOLOAD = "/home/nao/naoqi/preferences/autoload.ini"
+RETIRE = ("nao-audio-bridge", "audio_bridge.py")
 
 
 def _is_section(line):
@@ -21,11 +22,14 @@ def _is_section(line):
     return stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2
 
 
-def register_program(lines, launch):
+def register_program(lines, launch, retire=()):
     """Return autoload lines with ``launch`` once, inside ``[program]``."""
     cleaned = []
     for line in lines:
-        if line.strip() == launch:
+        stripped = line.strip()
+        words = stripped.split() if not stripped.startswith(("#", ";")) else []
+        paths = [part for word in words for part in word.split("/")]
+        if stripped == launch or any(token and token in paths for token in retire):
             continue
         cleaned.append(line.rstrip("\r"))
 
@@ -63,7 +67,7 @@ def write_autoload(path, launch):
     if os.path.isfile(path):
         with open(path, "r") as handle:
             lines = handle.read().splitlines()
-    updated = register_program(lines, launch)
+    updated = register_program(lines, launch, RETIRE)
     with open(path, "w") as handle:
         handle.write("\n".join(updated) + "\n")
 

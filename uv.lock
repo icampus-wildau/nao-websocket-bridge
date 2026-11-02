@@ -1,0 +1,19 @@
+version = 1
+revision = 3
+requires-python = ">=3.10"
+
+[[package]]
+name = "nao-websocket-bridge"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "nao-websocket-bridge-protocol" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "nao-websocket-bridge-protocol", directory = "../nao-websocket-bridge-protocol" }]
+
+[[package]]
+name = "nao-websocket-bridge-protocol"
+version = "1.0.1"
+source = { directory = "../nao-websocket-bridge-protocol" }

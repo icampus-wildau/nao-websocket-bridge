@@ -3,7 +3,7 @@
 # The first invocation returns immediately so NAOqi's [program] autoload
 # does not wait on the restart loop.
 
-BRIDGE_HOME=${NAO_AUDIO_BRIDGE_HOME:-/home/nao/nao-audio-bridge}
+BRIDGE_HOME=${NAO_AUDIO_BRIDGE_HOME:-$(CDPATH= cd -- "$(dirname "$0")" && pwd)}
 cd "$BRIDGE_HOME" || exit 1
 
 PIDFILE=$BRIDGE_HOME/run_forever.pid
@@ -25,9 +25,10 @@ bridge_pids() {
         ;;
       *run_forever.sh*)
         # This stop invocation and its subshells contain " stop".
+        # Match this install only, so the autostart supervisor is left alone.
         case "$cmd" in
           *" stop"*) ;;
-          *) printf '%s\n' "$pid" ;;
+          *"$BRIDGE_HOME"/run_forever.sh*|*"$0"*) printf '%s\n' "$pid" ;;
         esac
         ;;
     esac

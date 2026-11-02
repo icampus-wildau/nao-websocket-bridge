@@ -77,12 +77,12 @@ if [ -z "${BRIDGE_ROOT:-}" ]; then
 else
   PROTOCOL_PKG=
   sibling=$BRIDGE_ROOT/../nao-websocket-bridge-protocol/nao_websocket_bridge_protocol
-  if [ -f "$sibling/__init__.py" ]; then
-    PROTOCOL_PKG=$(CDPATH= cd -- "$sibling" && pwd)
-    echo "Using local protocol checkout: $PROTOCOL_PKG"
-  elif [ -n "${PROTOCOL_SRC:-}" ] && [ -f "$PROTOCOL_SRC/nao_websocket_bridge_protocol/__init__.py" ]; then
+  if [ -n "${PROTOCOL_SRC:-}" ] && [ -f "$PROTOCOL_SRC/nao_websocket_bridge_protocol/__init__.py" ]; then
     PROTOCOL_PKG=$(CDPATH= cd -- "$PROTOCOL_SRC/nao_websocket_bridge_protocol" && pwd)
     echo "Using protocol checkout from PROTOCOL_SRC: $PROTOCOL_PKG"
+  elif [ -f "$sibling/__init__.py" ]; then
+    PROTOCOL_PKG=$(CDPATH= cd -- "$sibling" && pwd)
+    echo "Using local protocol checkout: $PROTOCOL_PKG"
   else
     if command -v mktemp >/dev/null 2>&1; then
       WORKDIR=$(mktemp -d)
@@ -116,19 +116,20 @@ if ! command -v python >/dev/null 2>&1; then
 fi
 
 echo "Installing audio bridge into $BRIDGE_HOME"
-mkdir -p "$BRIDGE_HOME" "$HOME/naoqi/preferences"
-cp "$BRIDGE_ROOT/audio_bridge.py" "$BRIDGE_HOME/audio_bridge.py"
-rm -rf "$BRIDGE_HOME/SimpleWebSocketServer" "$BRIDGE_HOME/nao_websocket_bridge_protocol"
-cp -R "$BRIDGE_ROOT/SimpleWebSocketServer" "$BRIDGE_HOME/SimpleWebSocketServer"
-cp -R "$PROTOCOL_PKG" "$BRIDGE_HOME/nao_websocket_bridge_protocol"
-cp "$BRIDGE_ROOT/packaging/run_forever.sh" "$BRIDGE_HOME/run_forever.sh"
-cp "$BRIDGE_ROOT/packaging/register_autoload.py" "$BRIDGE_HOME/register_autoload.py"
-chmod 755 "$BRIDGE_HOME/run_forever.sh" "$BRIDGE_HOME/audio_bridge.py"
+STAGE=$BRIDGE_HOME.stage
+rm -rf "$STAGE"
+mkdir -p "$STAGE" "$HOME/naoqi/preferences"
+cp "$BRIDGE_ROOT/audio_bridge.py" "$STAGE/audio_bridge.py"
+cp -R "$BRIDGE_ROOT/SimpleWebSocketServer" "$STAGE/SimpleWebSocketServer"
+cp -R "$PROTOCOL_PKG" "$STAGE/nao_websocket_bridge_protocol"
+cp "$BRIDGE_ROOT/packaging/run_forever.sh" "$STAGE/run_forever.sh"
+cp "$BRIDGE_ROOT/packaging/register_autoload.py" "$STAGE/register_autoload.py"
+cp "$BRIDGE_ROOT/packaging/replace_tree.sh" "$STAGE/replace_tree.sh"
+chmod 755 "$STAGE/run_forever.sh" "$STAGE/audio_bridge.py" "$STAGE/replace_tree.sh"
+NAO_CANON=$BRIDGE_HOME NAO_STAGE=$STAGE NAO_MARKER=audio_bridge.py \
+  NAO_HOME_TOKEN=nao-audio-bridge NAO_KEEP=bridge.env NAO_REGISTER=1 \
+  NAO_AUTOLOAD=$AUTOLOAD "$STAGE/replace_tree.sh"
 rm -rf "$PKG_DIR"
-
-python "$BRIDGE_HOME/register_autoload.py" "$AUTOLOAD" "$BRIDGE_HOME/run_forever.sh"
-"$BRIDGE_HOME/run_forever.sh" stop || true
-NAO_AUDIO_BRIDGE_HOME=$BRIDGE_HOME "$BRIDGE_HOME/run_forever.sh"
 
 cat <<EOF
 Installed into $BRIDGE_HOME.

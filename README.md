@@ -17,7 +17,7 @@ PowerShell command. A route to the robot's SSH port and TCP 8765 is required.
 curl -LsSf https://raw.githubusercontent.com/icampus-wildau/nao-websocket-bridge/main/packaging/install.sh | sh
 ```
 
-The script downloads the `main` branch, asks for the NAO IP and the `nao` password, copies the files, registers autoload, and starts the bridge. The first connection prints the robot's SSH host key and waits for `yes`. The address is the IP on its own, for example `192.168.2.57`.
+The script downloads the latest GitHub release and runs the installer inside that release. It asks for the NAO IP and the `nao` password, copies the files, registers autoload, and starts the bridge. The first connection prints the robot's SSH host key and waits for `yes`. The address is the IP on its own, for example `192.168.2.57`.
 
 ## Install while logged in on the robot
 
@@ -38,7 +38,7 @@ Use this to copy files that are not on `main` yet:
 sh packaging/install_on_nao.sh nao@ROBOT_IP
 ```
 
-The protocol package comes from `../nao-websocket-bridge-protocol` when that directory exists, and otherwise from the `main` branch on GitHub. Set `PROTOCOL_SRC` to a checkout root to choose another copy.
+Set `PROTOCOL_SRC` to a checkout root to select the protocol explicitly. Otherwise the installer uses `../nao-websocket-bridge-protocol` when available. The laptop installer falls back to the pinned PyPI package; the on-robot installer downloads `main` from GitHub.
 
 ## On the robot
 

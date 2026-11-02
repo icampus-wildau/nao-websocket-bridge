@@ -3,6 +3,9 @@
 #
 #   curl -LsSf https://raw.githubusercontent.com/icampus-wildau/nao-websocket-bridge/main/packaging/install.sh | sh
 #
+# The copy from main downloads the latest GitHub release and runs the script
+# inside that release. Running this file from a checkout installs that checkout.
+#
 # Asks for the robot IP and the nao user's password when they are not already
 # set. A password typed at the prompt is handed to ssh through SSH_ASKPASS and
 # is not passed as an argument. The same helper answers a new host key on the
@@ -15,9 +18,7 @@
 set -eu
 
 BRIDGE_REPO=https://github.com/icampus-wildau/nao-websocket-bridge
-PROTOCOL_REPO=https://github.com/icampus-wildau/nao-websocket-bridge-protocol
-BRANCH=main
-NAO_USER=nao
+NAO_USER=${NAO_USER:-nao}
 
 usage() {
   cat <<EOF
@@ -177,24 +178,45 @@ trap cleanup EXIT
 trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
 
-echo "Downloading $BRIDGE_REPO ($BRANCH)"
-fetch "$BRIDGE_REPO/archive/refs/heads/$BRANCH.tar.gz" "$WORKDIR/bridge.tar.gz"
-echo "Downloading $PROTOCOL_REPO ($BRANCH)"
-fetch "$PROTOCOL_REPO/archive/refs/heads/$BRANCH.tar.gz" "$WORKDIR/protocol.tar.gz"
-
-mkdir -p "$WORKDIR/src"
-gzip -dc "$WORKDIR/bridge.tar.gz" | tar -xf - -C "$WORKDIR/src"
-gzip -dc "$WORKDIR/protocol.tar.gz" | tar -xf - -C "$WORKDIR/src"
-
-BRIDGE_ROOT=$WORKDIR/src/nao-websocket-bridge-$BRANCH
-PROTOCOL_ROOT=$WORKDIR/src/nao-websocket-bridge-protocol-$BRANCH
-if [ ! -f "$BRIDGE_ROOT/audio_bridge.py" ]; then
-  echo "Download has no audio_bridge.py under $BRIDGE_ROOT" >&2
-  exit 1
+self=$0
+BRIDGE_ROOT=
+if [ -f "$self" ]; then
+  maybe=$(CDPATH= cd -- "$(dirname "$self")/.." && pwd)
+  if [ -f "$maybe/audio_bridge.py" ]; then
+    BRIDGE_ROOT=$maybe
+  fi
 fi
-if [ ! -f "$PROTOCOL_ROOT/nao_websocket_bridge_protocol/__init__.py" ]; then
-  echo "Download has no protocol package under $PROTOCOL_ROOT" >&2
-  exit 1
+
+if [ -z "$BRIDGE_ROOT" ]; then
+  echo "Downloading the latest release of $BRIDGE_REPO"
+  fetch "https://api.github.com/repos/icampus-wildau/nao-websocket-bridge/releases/latest" "$WORKDIR/release.json"
+  py=python3
+  command -v python3 >/dev/null 2>&1 || py=python
+  meta=$("$py" - "$WORKDIR/release.json" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1]))
+if data.get("draft") or data.get("prerelease"):
+    sys.stderr.write("The latest GitHub release cannot be installed.\n")
+    sys.exit(1)
+sys.stdout.write(data["tag_name"] + "\n" + data["tarball_url"] + "\n")
+PY
+)
+  NAO_PROGRAM_VERSION=$(printf '%s\n' "$meta" | sed -n '1p')
+  tarball=$(printf '%s\n' "$meta" | sed -n '2p')
+  export NAO_PROGRAM_VERSION
+  fetch "$tarball" "$WORKDIR/bridge.tar.gz"
+  mkdir -p "$WORKDIR/src"
+  gzip -dc "$WORKDIR/bridge.tar.gz" | tar -xf - -C "$WORKDIR/src"
+  found=$(find "$WORKDIR/src" -type f -name audio_bridge.py | head -n 1)
+  if [ -z "$found" ]; then
+    echo "Release has no audio_bridge.py" >&2
+    exit 1
+  fi
+  BRIDGE_ROOT=$(CDPATH= cd -- "$(dirname "$found")" && pwd)
+  export NAO_IP=$IP
+  export NAO_PASSWORD
+  sh "$BRIDGE_ROOT/packaging/install.sh" --ip "$IP" --user "$NAO_USER"
+  exit $?
 fi
 
 ASKPASS=$WORKDIR/askpass
@@ -210,7 +232,11 @@ case "${SSH_ASKPASS_PROMPT:-}" in
     ;;
 esac
 case "$prompt" in
-  *yes/no*|*[Ff]ingerprint*|*authenticity*)
+    *yes/no*|*[Ff]ingerprint*|*authenticity*)
+    if [ -n "${NAO_KNOWN_HOSTS:-}" ]; then
+      echo "SSH asked to confirm a host key: $prompt" >&2
+      exit 1
+    fi
     if [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
       echo "No terminal to confirm the SSH host key." >&2
       exit 1
@@ -230,5 +256,5 @@ export SSH_ASKPASS=$ASKPASS
 export SSH_ASKPASS_REQUIRE=force
 export DISPLAY="${DISPLAY:-:0}"
 
-echo "Installing on $NAO_USER@$IP from the $BRANCH branch."
-PROTOCOL_SRC=$PROTOCOL_ROOT sh "$BRIDGE_ROOT/packaging/install_on_nao.sh" "$NAO_USER@$IP"
+echo "Installing on $NAO_USER@$IP."
+PROTOCOL_SRC=${PROTOCOL_SRC:-} sh "$BRIDGE_ROOT/packaging/install_on_nao.sh" "$NAO_USER@$IP"

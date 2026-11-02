@@ -628,13 +628,38 @@ def broadcast_pending_audio(state, audio_queue):
             state.note_send_discards(client, dropped)
 
 
+def _installed_version():
+    """Release tag written by the installer, or an empty string."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "VERSION")
+    try:
+        handle = open(path)
+    except IOError:
+        return ""
+    try:
+        return handle.read().strip()
+    finally:
+        handle.close()
+
+
 def send_status(state, audio_source):
     if not state.clients or audio_source is None:
         return
-    payload = status_message(
-        audio_source.dropped_chunks,
-        audio_source.subscribed,
-    )
+    version = _installed_version()
+    try:
+        payload = status_message(
+            audio_source.dropped_chunks,
+            audio_source.subscribed,
+            version,
+        )
+    except TypeError:
+        payload = status_message(
+            audio_source.dropped_chunks,
+            audio_source.subscribed,
+        )
+        if version:
+            reported = json.loads(payload)
+            reported["version"] = version
+            payload = json.dumps(reported)
     for client in list(state.clients):
         try:
             dropped = queue_client_message(client, payload)

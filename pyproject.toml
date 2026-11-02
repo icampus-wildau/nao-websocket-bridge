@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nao-websocket-bridge"
+version = "0.1.0"
+description = "Microphone bridge that runs on a NAO."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "nao-websocket-bridge-protocol==1.0.1",
+]
+
+[tool.uv.sources]
+nao-websocket-bridge-protocol = { path = "../nao-websocket-bridge-protocol" }
