@@ -14,7 +14,7 @@ Do not add this program under `[python]` in `autoload.ini`. That section runs in
 
 ## Install via the NAO Fair app
 
-The NAO Fair app installs this process from its system tab. A robot without it still accepts a connection. The app then reports that the autostart assignment was not stored.
+The NAO Fair app installs this process from its System tab. A robot without the bridge still accepts a NAOqi connection for speech, motion, and gesture tests. Conversations wait for the microphone stream; System reports bridge availability separately from the autostart assignment.
 
 ## Install from a laptop
 
